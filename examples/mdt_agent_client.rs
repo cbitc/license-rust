@@ -1,3 +1,5 @@
+use std::fs;
+
 use license_sdk::VerifyError;
 use serde::{Deserialize, Serialize};
 
@@ -14,9 +16,9 @@ struct Meta {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 获取公钥和证书内容，注意只能使用硬编码或者预编译宏将其导入，不能在运行时读取，否则会被篡改。
+    // 获取公钥和证书内容，注意公钥只能使用硬编码或者预编译宏将其导入，不能在运行时读取，否则会被篡改。
     let key = include_str!("./key/key.pub");
-    let certification = include_str!("./licenses/2026-08-05.lic");
+    let certification = fs::read_to_string("./examples/licenses/2026-08-05.lic")?;
 
     // 获取设备指纹
     let fingerprint = license_sdk::read_machine_guid()?;
@@ -29,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
 
     // 验证证书，泛型参数用于客户端指定所需的数据
-    let result = verifier.verify::<Meta>(certification);
+    let result = verifier.verify::<Meta>(&certification);
     // 错误处理，可以按需处理
     if let Err(err) = &result {
         match err {
