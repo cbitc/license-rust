@@ -59,12 +59,7 @@ impl Verifier {
         if self.fingerprint.is_none() || payload.fingerprint_sha256.is_none() {
             return None;
         }
-        let fingerprint = self
-            .fingerprint
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .unwrap();
+        let fingerprint = self.fingerprint.as_deref().map(str::trim).unwrap();
         let expected_hash = payload.fingerprint_sha256.as_deref().unwrap();
 
         let fingerprint_hash = format!("{:x}", Sha256::digest(fingerprint.as_bytes()));

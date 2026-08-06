@@ -2,7 +2,8 @@
 name = "license-sdk"
 version = "0.1.0"
 edition = "2024"
-publish = true
+publish = false
+repository = "http://192.168.1.252:3000/cbitc/license-sdk-rust"
 description = "License Rust SDK"
 
 [dependencies]

@@ -9,7 +9,6 @@
 ```toml
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 license-sdk = { git = "http://192.168.1.252:3000/cbitc/license-sdk-rust.git", tag = "v0.1.0" }
 ```
 
@@ -136,3 +135,17 @@ pub fn read_machine_guid() -> Result<String, String>
 
 - 使用 `include_str!` 或其他编译期方式嵌入公钥；不要在运行时读取文件。
 - 离线校验依赖客户端系统时钟和本地运行环境。但 SDK 只验证签名完整性和许可证规则，无法保证客户端环境不被篡改。
+
+## 公钥和license获取
+以下的获取流程仅用于测试
+
+当前用于测试公钥为： "eyJjcnYiOiJFZDI1NTE5IiwieCI6IlNkUWI5ZDQtTVctck05MUVVVXJIRW5WaHYzLU1meXltWDBvX2NXYzNVWGsiLCJrdHkiOiJPS1AiLCJraWQiOiIyMDI2LjA4LjA1IiwiYWxnIjoiRWREU0EiLCJ1c2UiOiJzaWcifQ"
+
+license: 访问http://139.199.182.155，登录token为1111111122222222。
+操作：
+1. 创建所需的产品，功能权限和许可策略。
+2. 新建许可证：选择许可策略后创建许可证，（license-key 是分发至用户用以更换，续签的凭证，当前可忽略）
+3. 离线签发：选择许可证后点击签发离线许可。
+
+提示:
+当前若并不使用产品参与校验，可以使用产品“ANY”来表示一种逻辑上的包含所有产品的产品来实现，然后将许可策略设置为永不过期，各个模块分别过期就可以实现一种分模块不分产品的效果。
