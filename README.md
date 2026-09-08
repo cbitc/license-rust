@@ -131,6 +131,7 @@ pub fn read_machine_guid() -> Result<String, String>
 | `MetaParseError(message)` | `meta` 无法反序列化为调用方指定的类型，来源于客户端错误 |
 | `InternalError(message)` | SDK 内部错误。 |
 
+
 ## 安全建议
 
 - 使用 `include_str!` 或其他编译期方式嵌入公钥；不要在运行时读取文件。
@@ -149,3 +150,6 @@ license: 访问http://139.199.182.155，登录token为1111111122222222。
 
 提示:
 当前若并不使用产品参与校验，可以使用产品“ANY”来表示一种逻辑上的包含所有产品的产品来实现，然后将许可策略设置为永不过期，各个模块分别过期就可以实现一种分模块不分产品的效果。
+
+
+<img src="./license流程.drawio.svg" alt="图片描述"/>
