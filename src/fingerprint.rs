@@ -2,10 +2,6 @@ use sha2::{Digest, Sha256};
 
 use crate::error::LicenseError;
 
-/// 计算当前环境指纹：与 license-active 激活入口使用的算法完全一致，
-/// 服务端令牌中的 `fingerprintSha256` 即此值的原始字符串。
-///
-/// 组件：操作系统、架构、平台机器标识（缺失容忍）、主机名（获取失败为硬错误）。
 pub fn current_fingerprint() -> Result<String, LicenseError> {
     let machine_id = platform_machine_id().unwrap_or_default();
     let host = hostname::get()
@@ -37,29 +33,6 @@ fn platform_machine_id() -> Option<String> {
         .ok()?
         .get_value("MachineGuid")
         .ok()
-}
-
-#[cfg(target_os = "linux")]
-fn platform_machine_id() -> Option<String> {
-    std::fs::read_to_string("/etc/machine-id").ok()
-}
-
-#[cfg(target_os = "macos")]
-fn platform_machine_id() -> Option<String> {
-    let output = std::process::Command::new("ioreg")
-        .args(["-rd1", "-c", "IOPlatformExpertDevice"])
-        .output()
-        .ok()?;
-    let text = String::from_utf8(output.stdout).ok()?;
-    text.lines()
-        .find(|line| line.contains("IOPlatformUUID"))
-        .and_then(|line| line.split('=').nth(1))
-        .map(|value| value.trim().trim_matches('"').to_owned())
-}
-
-#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
-fn platform_machine_id() -> Option<String> {
-    None
 }
 
 #[cfg(test)]
