@@ -17,6 +17,3 @@ pub use environment::LicenseEnvironment;
 pub use error::LicenseError;
 pub use fingerprint::current_fingerprint;
 pub use verifier::{verify_certificate, verify_environment};
-
-/// 服务端默认签发者标识（与 license-active、license-api 的默认值一致）。
-pub const DEFAULT_ISSUER: &str = "MDT_LICENSE_SERVER";

@@ -57,10 +57,6 @@ impl LicenseEnvironment {
         Ok(environment)
     }
 
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
     /// 读取当前激活记录（仅令牌本体与两个本地事实，claims 需校验后从令牌解析）。
     pub fn load_activation(&self) -> Result<Option<StoredLicense>, LicenseError> {
         self.with_connection(|connection| {
@@ -78,7 +74,8 @@ impl LicenseEnvironment {
                     let json: String = row
                         .get(0)
                         .map_err(|error| LicenseError::Storage(error.to_string()))?;
-                    serde_json::from_str(&json).map_err(|error| LicenseError::Storage(error.to_string()))
+                    serde_json::from_str(&json)
+                        .map_err(|error| LicenseError::Storage(error.to_string()))
                 }
                 None => Ok(None),
             }
@@ -189,9 +186,8 @@ impl LicenseEnvironment {
 }
 
 fn default_environment_path() -> Result<PathBuf, LicenseError> {
-    let project_dirs = ProjectDirs::from("com", "license-tools", "license-active").ok_or_else(
-        || LicenseError::Environment("无法确定应用数据目录".to_owned()),
-    )?;
+    let project_dirs = ProjectDirs::from("com", "license-tools", "license-active")
+        .ok_or_else(|| LicenseError::Environment("无法确定应用数据目录".to_owned()))?;
     Ok(project_dirs.data_local_dir().join("license.db"))
 }
 

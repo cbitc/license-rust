@@ -44,10 +44,6 @@ pub enum LicenseError {
     #[error("令牌版本不受支持")]
     Version,
 
-    /// 令牌签发方与预期不符。
-    #[error("令牌签发方不匹配")]
-    Issuer,
-
     /// 令牌缺少必要声明。
     #[error("令牌缺少必要声明")]
     MissingClaims,

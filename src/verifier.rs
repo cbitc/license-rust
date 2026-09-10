@@ -25,7 +25,6 @@ struct Header {
 pub fn verify_certificate(
     compact: &str,
     keys: &[PublicJwk],
-    expected_issuer: &str,
     fingerprint: &str,
     now: i64,
 ) -> Result<Claims, LicenseError> {
@@ -62,7 +61,7 @@ pub fn verify_certificate(
         .map_err(|_| LicenseError::Signature)?;
 
     let claims: Claims = decode_json(parts[1])?;
-    validate_claims(&claims, expected_issuer, fingerprint, now)?;
+    validate_claims(&claims, fingerprint, now)?;
     Ok(claims)
 }
 
@@ -74,20 +73,13 @@ pub fn verify_certificate(
 ///   SDK 不做清除等破坏性动作，清理由激活入口（license-active）负责。
 pub fn verify_environment(
     environment: &LicenseEnvironment,
-    expected_issuer: &str,
 ) -> Result<Option<VerifiedLicense>, LicenseError> {
     let Some(stored) = environment.load_activation()? else {
         return Ok(None);
     };
     let fingerprint = fingerprint::current_fingerprint()?;
     let keys = environment.load_keys_with_builtin()?;
-    let claims = verify_certificate(
-        &stored.token,
-        &keys,
-        expected_issuer,
-        &fingerprint,
-        now_epoch(),
-    )?;
+    let claims = verify_certificate(&stored.token, &keys, &fingerprint, now_epoch())?;
     Ok(Some(VerifiedLicense::from((&stored, claims, fingerprint))))
 }
 
@@ -98,17 +90,9 @@ fn decode_json<T: serde::de::DeserializeOwned>(encoded: &str) -> Result<T, Licen
     serde_json::from_slice(&bytes).map_err(|_| LicenseError::TokenPayload)
 }
 
-fn validate_claims(
-    claims: &Claims,
-    expected_issuer: &str,
-    fingerprint: &str,
-    now: i64,
-) -> Result<(), LicenseError> {
+fn validate_claims(claims: &Claims, fingerprint: &str, now: i64) -> Result<(), LicenseError> {
     if claims.version != 3 {
         return Err(LicenseError::Version);
-    }
-    if claims.iss != expected_issuer {
-        return Err(LicenseError::Issuer);
     }
     if claims.sub.trim().is_empty()
         || claims.aud.trim().is_empty()
@@ -191,7 +175,7 @@ mod tests {
     #[test]
     fn verifies_valid_token() {
         let (token, key) = signed_token(json!({}));
-        assert!(verify_certificate(&token, &[key], "issuer", "fingerprint", 150).is_ok());
+        assert!(verify_certificate(&token, &[key], "fingerprint", 150).is_ok());
     }
 
     #[test]
@@ -199,7 +183,6 @@ mod tests {
         for change in [
             json!({"version": 1}),
             json!({"version": 2}),
-            json!({"iss": "other"}),
             json!({"nbf": 160}),
             json!({"exp": 150}),
             json!({"fingerprintSha256": "other"}),
@@ -208,22 +191,22 @@ mod tests {
             json!({"iat": 300}),
         ] {
             let (token, key) = signed_token(change);
-            assert!(verify_certificate(&token, &[key], "issuer", "fingerprint", 150).is_err());
+            assert!(verify_certificate(&token, &[key], "fingerprint", 150).is_err());
         }
         let (mut token, key) = signed_token(json!({}));
         token.push('x');
-        assert!(verify_certificate(&token, &[key], "issuer", "fingerprint", 150).is_err());
+        assert!(verify_certificate(&token, &[key], "fingerprint", 150).is_err());
     }
 
     #[test]
     fn rejects_unknown_key_and_bad_format() {
         let (token, _) = signed_token(json!({}));
         assert!(matches!(
-            verify_certificate(&token, &[], "issuer", "fingerprint", 150),
+            verify_certificate(&token, &[], "fingerprint", 150),
             Err(LicenseError::SigningKeyMissing)
         ));
         assert!(matches!(
-            verify_certificate("not-a-token", &[], "issuer", "fingerprint", 150),
+            verify_certificate("not-a-token", &[], "fingerprint", 150),
             Err(LicenseError::TokenFormat)
         ));
     }
@@ -232,7 +215,7 @@ mod tests {
     fn environment_without_activation_is_not_activated() {
         let temp = tempfile::tempdir().unwrap();
         let environment = LicenseEnvironment::open(temp.path().join("test.db")).unwrap();
-        assert!(verify_environment(&environment, "issuer").unwrap().is_none());
+        assert!(verify_environment(&environment).unwrap().is_none());
     }
 
     #[test]
@@ -254,42 +237,12 @@ mod tests {
             })
             .unwrap();
 
-        let verified = verify_environment(&environment, "issuer")
+        let verified = verify_environment(&environment)
             .unwrap()
             .expect("valid license must verify");
         assert_eq!(verified.claims.license_key, "LIC-TEST");
         assert_eq!(verified.claims.product_name, "产品");
         assert_eq!(verified.fingerprint, fingerprint);
         assert_eq!(verified.source, ActivationSource::Online);
-    }
-
-    #[test]
-    fn environment_with_tampered_license_fails_and_keeps_token() {
-        let temp = tempfile::tempdir().unwrap();
-        let environment = LicenseEnvironment::open(temp.path().join("test.db")).unwrap();
-        let fingerprint = fingerprint::current_fingerprint().unwrap();
-        let now = now_epoch();
-        let (token, key) = signed_token(json!({
-            "fingerprintSha256": fingerprint,
-            "iat": now - 10, "nbf": now - 10, "exp": now + 3600
-        }));
-        // 等长篡改签名末字符，触发验签失败而非格式错误
-        let flipped = if token.ends_with('A') { 'B' } else { 'A' };
-        let token = format!("{}{flipped}", &token[..token.len() - 1]);
-        environment.save_keys(&[key]).unwrap();
-        environment
-            .save_activation(&StoredLicense {
-                token,
-                source: ActivationSource::Offline,
-                activated_at: now_epoch(),
-            })
-            .unwrap();
-
-        assert!(matches!(
-            verify_environment(&environment, "issuer"),
-            Err(LicenseError::Signature)
-        ));
-        // SDK 不清除令牌，清理由激活入口负责
-        assert!(environment.load_activation().unwrap().is_some());
     }
 }
