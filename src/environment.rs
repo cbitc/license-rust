@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use directories::ProjectDirs;
-use rusqlite::{Connection, params};
+use rusqlite::Connection;
 
 use crate::{
     claims::{PublicJwk, StoredLicense},
@@ -82,37 +82,6 @@ impl LicenseEnvironment {
         })
     }
 
-    /// 写入激活记录（供激活入口等写入方使用；覆盖单行记录）。
-    pub fn save_activation(&self, license: &StoredLicense) -> Result<(), LicenseError> {
-        let json = serde_json::to_string(license)
-            .map_err(|error| LicenseError::Storage(error.to_string()))?;
-        self.with_connection(|connection| {
-            let transaction = connection
-                .unchecked_transaction()
-                .map_err(|error| LicenseError::Storage(error.to_string()))?;
-            transaction
-                .execute(
-                    "INSERT INTO activation (id, activation_json) VALUES (1, ?1)
-                     ON CONFLICT(id) DO UPDATE SET activation_json = excluded.activation_json",
-                    [&json],
-                )
-                .map_err(|error| LicenseError::Storage(error.to_string()))?;
-            transaction
-                .commit()
-                .map_err(|error| LicenseError::Storage(error.to_string()))
-        })
-    }
-
-    /// 清除激活记录。
-    pub fn clear_activation(&self) -> Result<(), LicenseError> {
-        self.with_connection(|connection| {
-            connection
-                .execute("DELETE FROM activation WHERE id = 1", [])
-                .map(|_| ())
-                .map_err(|error| LicenseError::Storage(error.to_string()))
-        })
-    }
-
     /// 读取本地缓存的签名公钥（不含内置公钥；校验入口会自动合并）。
     pub fn load_keys(&self) -> Result<Vec<PublicJwk>, LicenseError> {
         self.with_connection(|connection| {
@@ -131,45 +100,6 @@ impl LicenseEnvironment {
             }
             Ok(keys)
         })
-    }
-
-    /// 覆盖/合并写入签名公钥（供激活入口刷新密钥缓存使用）。
-    pub fn save_keys(&self, keys: &[PublicJwk]) -> Result<(), LicenseError> {
-        self.with_connection(|connection| {
-            let transaction = connection
-                .unchecked_transaction()
-                .map_err(|error| LicenseError::Storage(error.to_string()))?;
-            for key in keys {
-                transaction
-                    .execute(
-                        "INSERT INTO signing_keys (kid, jwk_json, updated_at)
-                         VALUES (?1, ?2, unixepoch())
-                         ON CONFLICT(kid) DO UPDATE SET
-                           jwk_json = excluded.jwk_json,
-                           updated_at = excluded.updated_at",
-                        params![
-                            key.kid,
-                            serde_json::to_string(key)
-                                .map_err(|error| LicenseError::Storage(error.to_string()))?
-                        ],
-                    )
-                    .map_err(|error| LicenseError::Storage(error.to_string()))?;
-            }
-            transaction
-                .commit()
-                .map_err(|error| LicenseError::Storage(error.to_string()))
-        })
-    }
-
-    /// 读取缓存公钥并合并内置公钥：同 kid 时缓存优先（更新的密钥轮换数据）。
-    pub(crate) fn load_keys_with_builtin(&self) -> Result<Vec<PublicJwk>, LicenseError> {
-        let mut keys = self.load_keys()?;
-        let builtin: PublicJwk = serde_json::from_str(BUILTIN_JWK)
-            .map_err(|error| LicenseError::Storage(error.to_string()))?;
-        if !keys.iter().any(|key| key.kid == builtin.kid) {
-            keys.push(builtin);
-        }
-        Ok(keys)
     }
 
     fn with_connection<T>(
@@ -192,55 +122,4 @@ fn default_environment_path() -> Result<PathBuf, LicenseError> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::claims::ActivationSource;
-
-    fn stored(token: &str) -> StoredLicense {
-        StoredLicense {
-            token: token.to_owned(),
-            source: ActivationSource::Offline,
-            activated_at: 100,
-        }
-    }
-
-    #[test]
-    fn activation_round_trip_and_clear() {
-        let temp = tempfile::tempdir().unwrap();
-        let environment = LicenseEnvironment::open(temp.path().join("test.db")).unwrap();
-        assert!(environment.load_activation().unwrap().is_none());
-
-        environment.save_activation(&stored("first")).unwrap();
-        environment.save_activation(&stored("second")).unwrap();
-        assert_eq!(
-            environment.load_activation().unwrap().unwrap().token,
-            "second"
-        );
-
-        environment.clear_activation().unwrap();
-        assert!(environment.load_activation().unwrap().is_none());
-    }
-
-    #[test]
-    fn builtin_key_is_merged_with_cached_priority() {
-        let temp = tempfile::tempdir().unwrap();
-        let environment = LicenseEnvironment::open(temp.path().join("test.db")).unwrap();
-
-        let mut keys = environment.load_keys_with_builtin().unwrap();
-        assert_eq!(keys.len(), 1);
-        assert_eq!(keys.remove(0).kid, "2026.08.05");
-
-        let cached = PublicJwk {
-            kty: "OKP".into(),
-            crv: "Ed25519".into(),
-            x: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".into(),
-            kid: "2026.08.05".into(),
-            alg: Some("EdDSA".into()),
-            key_use: Some("sig".into()),
-        };
-        environment.save_keys(&[cached.clone()]).unwrap();
-        let keys = environment.load_keys_with_builtin().unwrap();
-        assert_eq!(keys.len(), 1);
-        assert_eq!(keys[0].x, cached.x);
-    }
-}
+mod tests {}

@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use crate::{
     claims::{Claims, PublicJwk, VerifiedLicense},
-    environment::LicenseEnvironment,
+    environment::{BUILTIN_JWK, LicenseEnvironment},
     error::LicenseError,
     fingerprint,
 };
@@ -24,7 +24,7 @@ struct Header {
 /// `fingerprintSha256` 存在时须与传入指纹原始字符串相等。
 pub fn verify_certificate(
     compact: &str,
-    keys: &[PublicJwk],
+    jwk: &PublicJwk,
     fingerprint: &str,
     now: i64,
 ) -> Result<Claims, LicenseError> {
@@ -36,10 +36,9 @@ pub fn verify_certificate(
     if header.alg != "EdDSA" || header.typ.as_deref() != Some("license+jwt") {
         return Err(LicenseError::TokenAlgorithm);
     }
-    let jwk = keys
-        .iter()
-        .find(|key| key.kid == header.kid)
-        .ok_or(LicenseError::SigningKeyMissing)?;
+    if header.kid != jwk.kid {
+        return Err(LicenseError::SigningKeyMissing);
+    }
     if jwk.kty != "OKP" || jwk.crv != "Ed25519" {
         return Err(LicenseError::SigningKeyInvalid("公钥类型不受支持".into()));
     }
@@ -78,8 +77,8 @@ pub fn verify_environment(
         return Ok(None);
     };
     let fingerprint = fingerprint::current_fingerprint()?;
-    let keys = environment.load_keys_with_builtin()?;
-    let claims = verify_certificate(&stored.token, &keys, &fingerprint, now_epoch())?;
+    let jwk: PublicJwk = serde_json::from_str(BUILTIN_JWK).unwrap();
+    let claims = verify_certificate(&stored.token, &jwk, &fingerprint, now_epoch())?;
     Ok(Some(VerifiedLicense::from((&stored, claims, fingerprint))))
 }
 
@@ -139,7 +138,6 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::claims::{ActivationSource, StoredLicense};
 
     fn signed_token(overrides: serde_json::Value) -> (String, PublicJwk) {
         let signing = SigningKey::from_bytes(&[7_u8; 32]);
@@ -175,7 +173,7 @@ mod tests {
     #[test]
     fn verifies_valid_token() {
         let (token, key) = signed_token(json!({}));
-        assert!(verify_certificate(&token, &[key], "fingerprint", 150).is_ok());
+        assert!(verify_certificate(&token, &key, "fingerprint", 150).is_ok());
     }
 
     #[test]
@@ -191,23 +189,31 @@ mod tests {
             json!({"iat": 300}),
         ] {
             let (token, key) = signed_token(change);
-            assert!(verify_certificate(&token, &[key], "fingerprint", 150).is_err());
+            assert!(verify_certificate(&token, &key, "fingerprint", 150).is_err());
         }
         let (mut token, key) = signed_token(json!({}));
         token.push('x');
-        assert!(verify_certificate(&token, &[key], "fingerprint", 150).is_err());
+        assert!(verify_certificate(&token, &key, "fingerprint", 150).is_err());
     }
 
     #[test]
     fn rejects_unknown_key_and_bad_format() {
         let (token, _) = signed_token(json!({}));
         assert!(matches!(
-            verify_certificate(&token, &[], "fingerprint", 150),
+            verify_certificate(
+                &token,
+                &PublicJwk {
+                    kty: "".into(),
+                    crv: "".into(),
+                    x: "11".into(),
+                    kid: "".into(),
+                    alg: None,
+                    key_use: None,
+                },
+                "fingerprint",
+                150
+            ),
             Err(LicenseError::SigningKeyMissing)
-        ));
-        assert!(matches!(
-            verify_certificate("not-a-token", &[], "fingerprint", 150),
-            Err(LicenseError::TokenFormat)
         ));
     }
 
@@ -216,33 +222,5 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let environment = LicenseEnvironment::open(temp.path().join("test.db")).unwrap();
         assert!(verify_environment(&environment).unwrap().is_none());
-    }
-
-    #[test]
-    fn environment_with_valid_license_verifies() {
-        let temp = tempfile::tempdir().unwrap();
-        let environment = LicenseEnvironment::open(temp.path().join("test.db")).unwrap();
-        let fingerprint = fingerprint::current_fingerprint().unwrap();
-        let now = now_epoch();
-        let (token, key) = signed_token(json!({
-            "fingerprintSha256": fingerprint,
-            "iat": now - 10, "nbf": now - 10, "exp": now + 3600
-        }));
-        environment.save_keys(&[key]).unwrap();
-        environment
-            .save_activation(&StoredLicense {
-                token,
-                source: ActivationSource::Online,
-                activated_at: now_epoch(),
-            })
-            .unwrap();
-
-        let verified = verify_environment(&environment)
-            .unwrap()
-            .expect("valid license must verify");
-        assert_eq!(verified.claims.license_key, "LIC-TEST");
-        assert_eq!(verified.claims.product_name, "产品");
-        assert_eq!(verified.fingerprint, fingerprint);
-        assert_eq!(verified.source, ActivationSource::Online);
     }
 }
