@@ -10,7 +10,7 @@ use crate::{
 
 /// 与 license-active 内置的信任公钥一致（kid 2026.08.05）。
 /// 校验时与本地缓存公钥按 kid 合并（缓存优先），保证全新环境也能验证由该密钥签发的令牌。
-pub const BUILTIN_JWK: &str = r#"{"kty":"OKP","crv":"Ed25519","x":"SdQb9d4-MW-rM91EUUrHEnVhv3-MfyymX0o_cWc3UXk","kid":"2026.08.05","alg":"EdDSA","use":"sig"}"#;
+
 
 /// 本地许可环境：license-active 写入、各客户端共享读取的 SQLite 库。
 ///

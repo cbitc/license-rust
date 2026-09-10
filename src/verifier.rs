@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use crate::{
     claims::{Claims, PublicJwk, VerifiedLicense},
-    environment::{BUILTIN_JWK, LicenseEnvironment},
+    environment::LicenseEnvironment,
     error::LicenseError,
     fingerprint,
 };
@@ -16,12 +16,8 @@ struct Header {
     kid: String,
 }
 
-/// 校验原语：验签 + v3 claims 校验。时间由调用方注入，便于测试。
-///
-/// 语义与 license-active 激活入口的本地校验完全一致：
-/// header 须 `alg=EdDSA`、`typ=license+jwt`；按 kid 匹配 OKP/Ed25519 公钥验签；
-/// claims 须 version 3、签发方匹配、必要声明齐全、`nbf <= now < exp` 且时间范围自洽；
-/// `fingerprintSha256` 存在时须与传入指纹原始字符串相等。
+pub const BUILTIN_JWK: &str = r#"{"kty":"OKP","crv":"Ed25519","x":"SdQb9d4-MW-rM91EUUrHEnVhv3-MfyymX0o_cWc3UXk","kid":"2026.08.05","alg":"EdDSA","use":"sig"}"#;
+
 pub fn verify_certificate(
     compact: &str,
     jwk: &PublicJwk,
@@ -64,19 +60,13 @@ pub fn verify_certificate(
     Ok(claims)
 }
 
-/// 高层入口：从本地环境读取令牌并完成校验。
-///
-/// - `Ok(None)`：环境中没有激活令牌（未激活）。
-/// - `Ok(Some)`：令牌存在且校验通过，claims 为从令牌新鲜解析的结果。
-/// - `Err`：令牌存在但校验失败（过期、被篡改、设备不符等）。
-///   SDK 不做清除等破坏性动作，清理由激活入口（license-active）负责。
 pub fn verify_environment(
     environment: &LicenseEnvironment,
 ) -> Result<Option<VerifiedLicense>, LicenseError> {
     let Some(stored) = environment.load_activation()? else {
         return Ok(None);
     };
-    let fingerprint = fingerprint::current_fingerprint()?;
+    let fingerprint = fingerprint::get_environment_id()?;
     let jwk: PublicJwk = serde_json::from_str(BUILTIN_JWK).unwrap();
     let claims = verify_certificate(&stored.token, &jwk, &fingerprint, now_epoch())?;
     Ok(Some(VerifiedLicense::from((&stored, claims, fingerprint))))

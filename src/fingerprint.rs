@@ -2,7 +2,7 @@ use sha2::{Digest, Sha256};
 
 use crate::error::LicenseError;
 
-pub fn current_fingerprint() -> Result<String, LicenseError> {
+pub fn get_environment_id() -> Result<String, LicenseError> {
     let machine_id = platform_machine_id().unwrap_or_default();
     let host = hostname::get()
         .map_err(|error| LicenseError::Fingerprint(error.to_string()))?
@@ -50,7 +50,7 @@ mod tests {
 
     #[test]
     fn current_fingerprint_is_hex_sha256() {
-        let fingerprint = current_fingerprint().unwrap();
+        let fingerprint = get_environment_id().unwrap();
         assert_eq!(fingerprint.len(), 64);
         assert!(fingerprint.chars().all(|c| c.is_ascii_hexdigit()));
     }

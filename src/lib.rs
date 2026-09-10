@@ -15,5 +15,5 @@ pub use claims::{
 };
 pub use environment::LicenseEnvironment;
 pub use error::LicenseError;
-pub use fingerprint::current_fingerprint;
+pub use fingerprint::get_environment_id;
 pub use verifier::{verify_certificate, verify_environment};
