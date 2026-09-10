@@ -1,64 +1,59 @@
-use std::fs;
+use license_sdk::{LicenseError, LicenseEnvironment, DEFAULT_ISSUER};
+use serde::Deserialize;
 
-use license_sdk::VerifyError;
-use serde::{Deserialize, Serialize};
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
+/// 策略 meta 中按产品自定义的数据，客户端按需定义结构体。
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct TTSConstraint {
-    pub max_version: String,
+struct TtsConstraint {
+    max_version: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize)]
 struct Meta {
     #[serde(rename = "TTS")]
-    pub tts: TTSConstraint,
+    tts: TtsConstraint,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 获取公钥和证书内容，注意公钥只能使用硬编码或者预编译宏将其导入，不能在运行时读取，否则会被篡改。
-    let key = include_str!("./key/key.pub");
-    let certification = fs::read_to_string("./examples/licenses/2026-08-05.lic")?;
+    // 打开本地许可环境（license-active 写入的共享库），离线校验当前环境。
+    let environment = LicenseEnvironment::open_default()?;
 
-    // 获取设备指纹
-    let fingerprint = license_sdk::read_machine_guid()?;
-    println!("设备指纹: {}", fingerprint);
-
-    // 创建验证器, decoding_key必填，fingerprint，product_code，user_id需要时选填，目前不处理product_code和user_id。
-    let verifier = license_sdk::VerifierBuilder::new()
-        .decoding_key(key)?
-        .fingerprint("123456") //此处应替换为fingerprint
-        .build();
-
-    // 验证证书，泛型参数用于客户端指定所需的数据
-    let result = verifier.verify::<Meta>(&certification);
-    // 错误处理，可以按需处理
-    if let Err(err) = &result {
-        match err {
-            VerifyError::InvalidCertificate(msg) => {
-                println!("无效证书: {}", msg);
-            }
-            VerifyError::FingerprintMismatch => {
-                println!("指纹不匹配");
-            }
-            VerifyError::LicenseExpired(stamp) => {
-                println!("证书已过期: {}", stamp);
-            }
-            VerifyError::LicenseTampered => {
-                println!("证书被篡改");
-            }
-            VerifyError::DecodingKeyMismatch(kid) => {
-                println!("解码密钥不匹配: {}", kid);
-            }
-            _ => {
-                println!("其他错误: {:?}", err);
+    match license_sdk::verify_environment(&environment, DEFAULT_ISSUER) {
+        Ok(Some(license)) => {
+            println!("环境已激活（来源: {:?}）", license.source);
+            println!(
+                "产品: {} ({})",
+                license.claims.product_name, license.claims.product_code
+            );
+            println!("许可证密钥: {}", license.claims.license_key);
+            println!(
+                "授权功能: {:?}",
+                license
+                    .claims
+                    .entitlements
+                    .iter()
+                    .map(|item| item.code.as_str())
+                    .collect::<Vec<_>>()
+            );
+            println!("令牌有效期至: {}", license.claims.exp);
+            // meta 按产品自定义，需要时反序列化
+            if let Ok(meta) = serde_json::from_value::<Meta>(license.claims.meta.clone()) {
+                println!("TTS 最大版本: {}", meta.tts.max_version);
             }
         }
+        Ok(None) => {
+            println!("当前环境未激活，请先运行 license-active 完成激活");
+        }
+        Err(LicenseError::FingerprintMismatch) => {
+            println!("令牌不属于当前设备");
+        }
+        Err(LicenseError::Expired) => {
+            println!("离线令牌已过期，请重新激活");
+        }
+        Err(error) => {
+            println!("环境校验失败: {error}");
+        }
     }
-
-    // 证书中保存的数据，claims.entitlements是允许使用的模块ID列表，claims.meta是自定义数据，客户端可根据需要定义结构体。
-    let claims = result.unwrap();
-    println!("证书验证成功，claims: {:?}", claims);
 
     Ok(())
 }
