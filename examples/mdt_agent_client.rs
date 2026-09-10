@@ -1,4 +1,4 @@
-use license_sdk::{LicenseEnvironment, LicenseError};
+use license_sdk::{ActivationStore, LicenseError, default_store};
 use serde::Deserialize;
 
 /// 策略 meta 中按产品自定义的数据，客户端按需定义结构体。
@@ -15,10 +15,9 @@ struct Meta {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 打开本地许可环境（license-active 写入的共享库），离线校验当前环境。
-    let environment = LicenseEnvironment::open_default()?;
+    let store = default_store()?;
 
-    match license_sdk::verify_environment(&environment) {
+    match license_sdk::verify_environment(store.as_ref()) {
         Ok(Some(license)) => {
             println!("环境已激活（来源: {:?}）", license.source);
             println!(

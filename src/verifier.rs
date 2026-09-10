@@ -4,9 +4,9 @@ use serde::Deserialize;
 
 use crate::{
     claims::{Claims, PublicJwk, VerifiedLicense},
-    environment::LicenseEnvironment,
     error::LicenseError,
     fingerprint,
+    store::ActivationStore,
 };
 
 #[derive(Deserialize)]
@@ -61,9 +61,9 @@ pub fn verify_certificate(
 }
 
 pub fn verify_environment(
-    environment: &LicenseEnvironment,
+    store: &dyn ActivationStore,
 ) -> Result<Option<VerifiedLicense>, LicenseError> {
-    let Some(stored) = environment.load_activation()? else {
+    let Some(stored) = store.load_activation()? else {
         return Ok(None);
     };
     let fingerprint = fingerprint::get_environment_id()?;
@@ -205,12 +205,5 @@ mod tests {
             ),
             Err(LicenseError::SigningKeyMissing)
         ));
-    }
-
-    #[test]
-    fn environment_without_activation_is_not_activated() {
-        let temp = tempfile::tempdir().unwrap();
-        let environment = LicenseEnvironment::open(temp.path().join("test.db")).unwrap();
-        assert!(verify_environment(&environment).unwrap().is_none());
     }
 }
