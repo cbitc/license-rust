@@ -55,8 +55,6 @@ pub enum ActivationSource {
     Offline,
 }
 
-/// 持久化在本地环境中的唯一数据：令牌本体 + 两个客户端本地事实。
-/// claims 等派生信息在运行时从令牌新鲜解析，不落库。
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StoredLicense {
     pub token: String,
@@ -64,14 +62,12 @@ pub struct StoredLicense {
     pub activated_at: i64,
 }
 
-/// 环境校验通过后的运行时视图。
 #[derive(Clone, Debug)]
 pub struct VerifiedLicense {
     pub token: String,
     pub source: ActivationSource,
     pub activated_at: i64,
     pub claims: Claims,
-    /// 校验时使用的当前设备指纹。
     pub fingerprint: String,
 }
 
