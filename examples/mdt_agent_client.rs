@@ -1,29 +1,9 @@
-use license_sdk::{ActivationStore, LicenseError, default_store};
-use serde::Deserialize;
-
-/// 策略 meta 中按产品自定义的数据，客户端按需定义结构体。
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct TtsConstraint {
-    max_version: String,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct Meta {
-    #[serde(rename = "TTS")]
-    tts: TtsConstraint,
-}
+use license_sdk::LicenseError;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let store = default_store()?;
-
-    match license_sdk::verify_environment(store.as_ref()) {
-        Ok(Some(license)) => {
-            println!("环境已激活（来源: {:?}）", license.source);
-            println!(
-                "产品: {} ({})",
-                license.claims.product_name, license.claims.product_code
-            );
+    match license_sdk::verify_environment() {
+        Ok(license) => {
+            println!("环境已激活");
             println!("许可证密钥: {}", license.claims.license_key);
             println!(
                 "授权功能: {:?}",
@@ -35,13 +15,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .collect::<Vec<_>>()
             );
             println!("令牌有效期至: {}", license.claims.exp);
-            // meta 按产品自定义，需要时反序列化
-            if let Ok(meta) = serde_json::from_value::<Meta>(license.claims.meta.clone()) {
-                println!("TTS 最大版本: {}", meta.tts.max_version);
-            }
         }
-        Ok(None) => {
-            println!("当前环境未激活，请先运行 license-active 完成激活");
+        Err(LicenseError::Inactive) => {
+            println!("当前环境未激活，请先运行激活程序完成激活");
         }
         Err(LicenseError::FingerprintMismatch) => {
             println!("令牌不属于当前设备");

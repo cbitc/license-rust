@@ -21,6 +21,7 @@ impl DbActivationStore {
         })
     }
 
+    #[allow(dead_code)]
     pub(crate) fn locate(path: impl Into<PathBuf>) -> Self {
         Self { path: path.into() }
     }

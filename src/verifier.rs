@@ -6,7 +6,6 @@ use crate::{
     claims::{Claims, PublicJwk, VerifiedLicense},
     error::LicenseError,
     fingerprint,
-    store::ActivationStore,
 };
 
 #[derive(Deserialize)]
@@ -60,16 +59,15 @@ pub fn verify_certificate(
     Ok(claims)
 }
 
-pub fn verify_environment(
-    store: &dyn ActivationStore,
-) -> Result<Option<VerifiedLicense>, LicenseError> {
+pub fn verify_environment() -> Result<VerifiedLicense, LicenseError> {
+    let store = crate::store::default_store()?;
     let Some(stored) = store.load_activation()? else {
-        return Ok(None);
+        return Err(LicenseError::Inactive);
     };
     let fingerprint = fingerprint::get_environment_id()?;
     let jwk: PublicJwk = serde_json::from_str(BUILTIN_JWK).unwrap();
     let claims = verify_certificate(&stored.token, &jwk, &fingerprint, now_epoch())?;
-    Ok(Some(VerifiedLicense::from((&stored, claims, fingerprint))))
+    Ok(VerifiedLicense::from((&stored, claims, fingerprint)))
 }
 
 fn decode_json<T: serde::de::DeserializeOwned>(encoded: &str) -> Result<T, LicenseError> {

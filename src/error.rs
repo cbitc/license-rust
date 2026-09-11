@@ -8,6 +8,9 @@ pub enum LicenseError {
     #[error("本地许可数据读写失败: {0}")]
     Storage(String),
 
+    #[error("本地许可未激活")]
+    Inactive,
+
     #[error("设备指纹计算失败: {0}")]
     Fingerprint(String),
 
